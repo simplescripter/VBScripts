@@ -1,0 +1,209 @@
+<html>
+<head>
+<title>Help Desk Console</title>
+
+<HTA:APPLICATION 
+     ID="objORA"
+     APPLICATIONNAME="HD"
+     SCROLL="no"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal"
+>
+</head>
+
+<style>
+
+BODY
+{
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 10pt;
+   margin-top: 10px;
+   margin-left: 20px;
+   margin-right: 20px;
+   margin-bottom: 10px;
+}
+
+
+.button
+{
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 92px;
+
+}
+
+textarea
+{
+   font-family: arial;
+   font-size: 8pt;
+}
+
+select
+{
+   font-family: arial;
+   font-size: 8pt;
+   width: 150px;
+   margin-left: 0px;
+}
+
+td
+{
+   font-family: arial;
+   font-size: 10pt;
+}
+</style>
+
+<SCRIPT Language="VBScript">
+
+Window.ResizeTo 600, 250
+Window.MoveTo 250, 200
+
+Dim oUser, i
+
+i = 0
+
+Sub Window_Onload
+	Const ADS_SCOPE_SUBTREE = 2
+	Const adOpenStatic = 3
+	Const adLockOptimistic = 3
+	Const adUseClient = 3
+
+	PasswordArea.Disabled = True
+	
+	Set oRootDSE = GetObject("LDAP://RootDSE")
+	sDomain = oRootDSE.Get("defaultNamingContext")
+	
+	On Error Resume Next
+	
+	Set objConnection = CreateObject("ADODB.Connection")
+	objConnection.Provider = "ADsDSOObject"
+	Set objRecordSet = CreateObject("ADODB.Recordset")
+	Set objCommand =   CreateObject("ADODB.Command")
+	objConnection.Open "Active Directory Provider"
+	Set objCommand.ActiveConnection = objConnection
+	objCommand.Properties("Page Size") = 1000
+	objCommand.Properties("Searchscope") = ADS_SCOPE_SUBTREE
+	objCommand.CommandText =  "Select name from 'LDAP://" & sDomain & "' " _
+		& "Where objectClass='user' AND objectCategory='person' ORDER BY name ASC"
+	objRecordSet.CursorLocation = adUseClient
+	
+	objRecordSet.Open objCommand, , adOpenStatic, adLockOptimistic
+	objRecordSet.MoveFirst
+	
+	If Err = 0 Then
+	    Do Until objRecordSet.EOF
+	        strLine = objRecordSet.Fields("name").Value
+	        Set objOption = document.createElement("OPTION")
+	        objOption.Text = strLine
+	        objOption.Value = strLine
+	        ADUsers.Add(objOption)
+	        objRecordSet.MoveNext
+	    Loop
+	End If
+End Sub
+
+
+Sub ADUsers_OnChange()
+	Set oRootDSE2 = GetObject("LDAP://RootDSE")
+	sDomain2 = oRootDSE2.Get("defaultNamingContext")
+	Set oConnection2 = CreateObject("ADODB.Connection")
+	oConnection2.Provider = "ADsDSOObject"
+	Set oRecordSet2 = CreateObject("ADODB.Recordset")
+	Set oCommand2 =   CreateObject("ADODB.Command")
+	oConnection2.Open "Active Directory Provider"
+	Set oCommand2.ActiveConnection = oConnection2
+	oCommand2.CommandText =  "<LDAP://" & sDomain2 & ">;" _
+		& "(&(objectCategory=person)(objectClass=user)(name=" _
+		& ADUsers.Value & "));distinguishedName;" _
+		& "subTree"
+	oRecordSet2.Open oCommand2
+	oRecordSet2.MoveFirst
+	DataArea1.InnerHTML = oRecordSet2.Fields("distinguishedName")
+	Set oUser = GetObject("LDAP://" & oRecordSet2.Fields("distinguishedName"))
+	If oUser.IsAccountLocked = False Then
+		UserLockedOut.Checked = False
+		UserLockedOut.Disabled = True
+	Else
+		UserLockedOut.Checked = True
+		UserLockedOut.Disabled = False
+	End If
+End Sub
+	
+ Sub SaveChanges()
+ 	On Error Resume Next
+ 	Set oUser = GetObject("LDAP://" & oUser.DistinguishedName)
+ 	sResult = sResult & oUser.DisplayName & ":" & VbCrLf
+ 	If UserLockedOut.Checked = False Then
+ 		If oUser.IsAccountLocked = True Then
+ 			oUser.IsAccountLocked = False
+ 			oUser.SetInfo
+ 			UserLockedOut.Disabled = True
+ 			sResult = sResult & vbTab & "Unlocked."
+ 			iOperationPerformed = iOperationPerformed + 1
+ 		End If
+	End If
+	If ResetPassword.Checked Then
+		sNewPassword = PasswordArea.Value
+		oUser.SetPassword sNewPassword
+		If ForcePassChange.Checked Then
+			oUser.Put "pwdLastSet", 0
+		End If
+		oUser.SetInfo
+		If Err.Number = 0 Then
+			sResult = sResult & vbTab & "Password reset."
+			iOperationPerformed = iOperationPerformed + 1
+		Else
+			sResult = sResult & vbTab & "An error occurred resetting " _
+				& "the user's password.  Make sure the password meets " _
+				& "your organization's length and complexity requirements."
+			Err.Clear
+			iOperationPerformed = iOperationPerformed + 1
+		End If
+	End If
+	If iOperationPerformed > 0 Then
+		MsgBox sResult
+	Else
+		MsgBox "No changes have been made to " & oUser.DisplayName
+	End If
+ End Sub
+ 
+ Sub ResetPassword_OnClick()
+ 	i = i + 1
+ 	If i Mod 2 = 0 Then
+ 		PasswordArea.Disabled = True
+ 	Else
+ 		PasswordArea.Disabled = False
+ 	End If
+ End Sub
+ 
+Sub checkEnter()
+	If Document.ParentWindow.event.keycode = 13 Then
+		SaveChanges
+	Else
+		MsgBox "something...."
+		' document.ParentWindow.event.cancelbubble = False
+' 		document.ParentWindow.event.returnvalue = True
+	End If
+End Sub
+
+</SCRIPT>
+
+<body STYLE="font:10 pt arial; color:black; 
+filter:progid:DXImageTransform.Microsoft.Gradient
+(GradientType=1, StartColorStr='#708090', EndColorStr='#D3D3D3')">
+		<td width = "23%" valign="top"><b><font color="Black" face="Times New Roman" size="3">Users</font></b><BR><span id="AD Computers">
+			<select name="ADUsers" style="width:200">
+				 <option value="0"></option>
+			</select><br>
+			<span id=DataArea1><font color="Black" face="Times New Roman" size="2"></font></span>
+		<br><br><b><font color="Black" face="Times New Roman" size="3">New Password</font></b><input type="checkbox"name="ResetPassword"value="1"><font color="Black" face="Times New Roman" size="2">Reset Password?</font><br>
+		<input type="checkbox"name="ForcePassChange"value="1"checked="True"><font color="Black" face="Times New Roman" size="2">User Must Change Password at Next Logon?</font><br>
+				<input type="password" name="PasswordArea" size="30">
+				<input type="checkbox"name="UserLockedOut"value="1"><font color="Black" face="Times New Roman" size="2">USER LOCKED</font><br>
+				<input id=runbutton1  class="button" type="button" value="Save Changes" name="run_button1"  onClick="SaveChanges" title="Commits the new password and/or unlocks the selected user's account">
+<body>
+
+
+</body>
+</html>

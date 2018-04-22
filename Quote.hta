@@ -1,0 +1,269 @@
+<html>
+<!--Written by Shawn Stugart
+	shawns@nhcolorado.com
+	Last Updated: 4-30-2007
+-->
+
+<head>
+ <title>Quote Console</title>
+
+ <HTA:APPLICATION 
+     ID="Quoter"
+     APPLICATIONNAME="Quoter"
+     SCROLL="yes"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal"
+ >
+</head>
+
+<style>
+BODY
+{
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 10pt;
+   margin-top: 10px;
+   margin-left: 20px;
+   margin-right: 20px;
+   margin-bottom: 10px;
+}
+
+
+.button
+{
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 92px;
+
+}
+
+textarea
+{
+   font-family: arial;
+   font-size: 8pt;
+}
+
+select
+{
+   font-family: arial;
+   font-size: 8pt;
+   width: 150px;
+   margin-left: 0px;
+}
+
+td
+{
+   font-family: arial;
+   font-size: 10pt;
+}
+
+</style>
+
+
+<SCRIPT Language="VBScript">
+Sub Window_Onload
+	window.moveto 100,75
+	window.resizeto 400,300
+	On Error Resume Next
+    ForReading = 1
+    strNewFile = "C:\Documents and Settings\Administrator.CLC-9A02C69D6D8" _
+	& "\Desktop\Project\raw data from source.xls"
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    Set objFile = objFSO.OpenTextFile _
+        (strNewFile, ForReading)
+    If Err = 0 Then
+    	objFile.SkipLine
+	    Do Until objFile.AtEndOfStream
+	        strLine = CSVParser(objFile.ReadLine)
+	        Set objOption = document.createElement("OPTION")
+	        objOption.Text = strLine(4) & "," & strLine(3)
+	        objOption.Value = strLine(4) & "," & strLine(3)
+	        QuoteName.Add(objOption)
+	    Loop
+	    objFile.Close
+	End If
+End Sub
+
+Sub Summary
+	sRecordArray = Split(QuoteName.Value, ",")
+	ForReading = 1
+    strNewFile = "C:\Documents and Settings\Administrator.CLC-9A02C69D6D8" _
+	& "\Desktop\Project\raw data from source.xls"
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    Set objFile = objFSO.OpenTextFile _
+        (strNewFile, ForReading)
+    If Err = 0 Then
+    	Do Until objFile.AtEndOfStream
+	        strLine = objFile.ReadLine
+	        If InStr(strLine, sRecordArray(0)) And InStr(strLine, sRecordArray(1)) Then
+	        	strArray = CSVParser(strLine)
+	        	Exit Do
+	        End If
+	    Loop
+	End If
+	For i = 0 To UBound(strArray)
+		sRecord = sRecord & strArray(i) & vbCrLf
+	Next
+	MsgBox sRecord
+End Sub
+
+Function CSVParser (CSVDataToProcess)
+
+   'Declaring variables for text delimiter and text qualifyer
+    Dim TextDelimiter, TextQualifyer
+
+   'Declaring the variables used in determining action to be taken
+    Dim ProcessQualifyer, NewRecordCreate
+
+   'Declaring variables dealing with input string
+    Dim CharMaxNumber, CharLocation, CharCurrentVal, CharCounter, CharStorage
+
+   'Declaring variables that handle array duties
+    Dim CSVArray(), CSVArrayCount
+
+ 
+
+'-------------------
+
+   'Setting default values for various variables
+
+   '<- Text delimiter is a comma
+    TextDelimiter = ","
+
+   '<- Chr(34) is the ascii code for "
+    TextQualifyer = Chr(34)
+
+   '<- Determining how record should be processed
+    ProcessQualifyer = False
+
+   '<- Calculating no. of characters in variable
+    CharMaxNumber = Len(CSVDataToProcess)
+
+   '<- Determining how to handle record at different
+   '   stages of operation
+   '   0 = Don't create new record
+   '   1 = Write data to existing record
+   '   2 = Close record and open new one 
+    NewRecordCreate = 0
+
+   '<- Priming the array counter
+    CSVArrayCount = 0
+
+   '<- Initializing the array
+    Redim Preserve CSVArray(CSVArrayCount)
+
+   '<- Record character counter
+    CharCounter = 0
+
+ 
+
+'-------------------
+
+   'Starting the main loop
+
+    For CharLocation = 1 to CharMaxNumber
+
+      'Retrieving the next character in sequence from CSVDataToProcess
+       CharCurrentVal = Mid(CSVDataToProcess, CharLocation, 1)
+
+      'This will figure out if the record uses a text qualifyer or not
+       If CharCurrentVal = TextQualifyer And CharCounter = 0 Then
+         ProcessQualifyer = True
+         CharCurrentVal = "" 
+       End If
+
+      'Advancing the record 'letter count' counter
+       CharCounter = CharCounter + 1
+
+
+      'Choosing data extraction method (text qualifyer or no text qualifyer)
+       If ProcessQualifyer = True Then
+
+          'This section handles records with a text qualifyer and text delimiter
+          'It is also handles the special case scenario, where the qualifyer is
+          'part of the data.  In the CSV file, a double quote represents a single 
+          'one  ie.  "" = "
+           If Len(CharStorage) <> 0 Then
+              If CharCurrentVal = TextDelimiter Then
+                 CharStorage = ""
+                 ProcessQualifyer = False 
+                 NewRecordCreate = 2
+              Else
+                 CharStorage = ""
+                 NewRecordCreate = 1
+              End If
+           Else
+              If CharCurrentVal = TextQualifyer Then 
+                 CharStorage = CharStorage & CharCurrentVal
+                 NewRecordCreate = 0
+              Else
+                 NewRecordCreate = 1
+              End If
+           End If
+
+      'This section handles a regular CSV record.. without the text qualifyer
+       Else
+           If CharCurrentVal = TextDelimiter Then
+              NewRecordCreate = 2
+           Else
+              NewRecordCreate = 1 
+           End If
+
+       End If
+
+
+      'Writing the data to the array
+       Select Case NewRecordCreate
+
+        'This section just writes the info to the array
+         Case 1
+           CSVArray(CSVArrayCount) = CSVArray(CSVArrayCount) & CharCurrentVal
+
+        'This section closes the current record and creates a new one
+         Case 2
+           CharCounter = 0
+           CSVArrayCount = CSVArrayCount + 1
+           Redim Preserve CSVArray(CSVArrayCount) 
+
+       End Select
+
+    Next
+
+ 
+
+'-------------------
+
+   'Finishing Up
+
+    CSVParser = CSVArray
+
+ End Function
+
+</SCRIPT>
+
+<body STYLE="font:14 pt arial; color:white; 
+filter:progid:DXImageTransform.Microsoft.Gradient
+(GradientType=1, StartColorStr='#708090', EndColorStr='#D3D3D3')">
+
+&nbsp;<BR>
+<table width="100%">
+	<tr>
+		<td width = "23%" valign="top"><b>Names</b><BR><span id="Names">
+			<select name="QuoteName" style="width:200">
+				 <option value="0">All</option>
+			</select>
+			<input id=runbutton1  class="button" type="button" value="Quote" name="run_button1"  onClick="Summary">
+<br><br>
+
+<br>
+
+<br><span id=DataArea1></span>
+<br><span id=DataArea2></span>
+<br><span id=DataArea3></span>
+<br><span id=DataArea4></span>
+<br><span id=DataArea5></span>
+<br><span id=DataArea6></span>
+<br><span id=DataArea7></span>
+
+</body>
+</html>

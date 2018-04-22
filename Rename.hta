@@ -1,0 +1,141 @@
+<html>
+<head>
+<title>Rename Computers</title>
+
+<HTA:APPLICATION 
+     ID="objORA"
+     APPLICATIONNAME="Rename Computers"
+     SCROLL="no"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal"
+>
+</head>
+
+<style>
+
+BODY
+{
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 10pt;
+   margin-top: 10px;
+   margin-left: 20px;
+   margin-right: 20px;
+   margin-bottom: 10px;
+}
+
+
+.button
+{
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 92px;
+
+}
+
+textarea
+{
+   font-family: arial;
+   font-size: 8pt;
+}
+
+select
+{
+   font-family: arial;
+   font-size: 8pt;
+   width: 150px;
+   margin-left: 0px;
+}
+
+td
+{
+   font-family: arial;
+   font-size: 10pt;
+}
+</style>
+
+<SCRIPT Language="VBScript">
+
+Dim oUser, i
+
+i = 0
+
+Sub Window_Onload
+	Window.ResizeTo 400, 200
+	Window.MoveTo 250, 200
+	On Error Resume Next
+	TextBox.Disabled = True
+    ForReading = 1
+    strNewFile = "C:\Clients.txt"
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    Set objFile = objFSO.OpenTextFile _
+        (strNewFile, ForReading)
+    If Err = 0 Then
+	    Do Until objFile.AtEndOfStream
+	        strLine = objFile.ReadLine
+	        Set objOption = document.createElement("OPTION")
+	        objOption.Text = strLine
+	        objOption.Value = strLine
+	        AvailableComputers.Add(objOption)
+	    Loop
+	    objFile.Close
+	End If
+End Sub
+
+Sub AvailableComputers_OnChange()
+	TextBox.Disabled = False
+End Sub
+ 
+ Sub RenameIt()
+ 	Set oWMI = GetObject("winmgmts:" _
+	    & "{impersonationLevel=impersonate,(Shutdown)}!\\" & AvailableComputers.Value & "\root\cimv2")
+	Set colComputers = oWMI.ExecQuery _
+	    ("Select * from Win32_ComputerSystem")
+	For Each oComputer in colComputers
+	    err = oComputer.Rename(TextBox.Value)
+	Next
+	Set colOperatingSystems = oWMI.ExecQuery _
+	    ("Select * from Win32_OperatingSystem")
+	For Each oOperatingSystem in colOperatingSystems
+	    oOperatingSystem.Win32Shutdown(2 + 4)
+	Next
+ End Sub
+
+Sub KeyCheck
+    If window.event.KeyCode >= 48 And window.event.KeyCode <= 57 Then
+        window.event.returnValue = True
+    Elseif window.event.KeyCode >= 65 And window.event.KeyCode <= 90 Then
+    	window.event.returnValue = True
+    Elseif window.event.KeyCode >= 97 And window.event.KeyCode <= 122 Then
+    	window.event.returnValue = True
+    Else
+    	window.event.returnValue = False
+    End If
+End Sub
+
+Sub VerifyLength
+	If Len(TextBox.Value) > 15 Then
+		TextBox.Value = ""
+		MsgBox "Computer name is too long."
+	End If
+End Sub
+
+
+</SCRIPT>
+
+<body STYLE="font:10 pt arial; color:black; 
+filter:progid:DXImageTransform.Microsoft.Gradient
+(GradientType=1, StartColorStr='#708090', EndColorStr='#D3D3D3')">
+		<td width = "23%" valign="top"><b><font color="Black" face="Times New Roman" size="3">Computers</font></b><BR><span id="Computers">
+			<select name="AvailableComputers" style="width:200">
+				 <option value="0"></option>
+			</select><br>
+			<span id=DataArea1><font color="Black" face="Times New Roman" size="2"></font></span>
+		<br><br><b><font color="Black" face="Times New Roman" size="3">New Name</font></b>
+				<input type="text" name="TextBox" size="15" onKeyPress="KeyCheck" onFocusOut="VerifyLength"><br><br>
+				<input id=runbutton1  class="button" type="button" value="RenameIt!" name="run_button1"  onClick="RenameIt" title="Renames the computer and reboots it.">
+<body>
+
+
+</body>
+</html>

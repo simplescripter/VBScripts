@@ -1,0 +1,169 @@
+<head>
+<title>WebCam Finder</title>
+
+<HTA:APPLICATION 
+     ID="WCF"
+     APPLICATIONNAME="WebCam Finder"
+     SCROLL="no"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal"
+>
+</head>
+
+<style>
+
+BODY
+{
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 10pt;
+   margin-top: 10px;
+   margin-left: 20px;
+   margin-right: 20px;
+   margin-bottom: 10px;
+}
+
+.button
+{
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 92px;
+}
+
+textarea
+{
+   font-family: arial;
+   font-size: 8pt;
+}
+
+select
+{
+   font-family: arial;
+   font-size: 8pt;
+   width: 150px;
+   margin-left: 0px;
+}
+
+td
+{
+   font-family: arial;
+   font-size: 10pt;
+}
+</style>
+
+<SCRIPT Language="VBScript">
+
+Sub Window_Onload
+	window.setTimeout "window.moveto 75,10", 100
+	window.setTimeout "window.resizeto 350,100", 100
+	'On Error Resume Next
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	Set oShell = CreateObject("WScript.Shell")
+	ForReading = 1
+	sSearchListFile = oShell.CurrentDirectory & "\SearchStrings.txt"
+	If oFSO.FileExists(sSearchListFile) Then
+		Set oFile = oFSO.OpenTextFile(sSearchListFile, ForReading)
+    	If Err = 0 Then
+		    Do Until oFile.AtEndOfStream
+		        sLine = oFile.ReadLine
+		        Set oOption = document.createElement("OPTION")
+		        oOption.Text = sLine
+		        oOption.Value = sLine
+		        SearchStrings.Add(oOption)
+		    Loop
+	    oFile.Close
+		End If
+	Else
+		Set oSearchStringFile = oFSO.CreateTextFile(sSearchListFile, True)
+		sSearchList  = "/view/index.shtml" & VbCrLf & _
+			"inurl:/view/index.shtml" & VbCrLf & _
+			"inurl:viewerframe?mode=" & VbCrLf & _
+			"inurl:/view:shtml" & VbCrLf & _
+			"inurl:view/indexframe.shtml" & VbCrLf & _
+			"inurl:lvappl" & VbCrLf & _
+			"live webcams" & VbCrLf & _
+			"inurl:""viewerframe?mode=motion""" & VbCrLf & _
+			"intitle:""snc-rz30 home""" & VbCrLf & _
+			"intitle:""WJ-NT104 Main""" & VbCrLf & _
+			"inurl:LvAppl intitle:liveapplet" & VbCrLf & _
+			"intitle:""Live View / - AXIS""" & VbCrLf & _
+			"inurl:indexFrame.shtml ""Axis Video Server""" & VbCrLf & _
+			"nurl:""ViewerFrame?Mode=" & VbCrLf & _
+			"intitle:Axis 2400 video server" & VbCrLf & _
+			"inurl:/view.shtml" & VbCrLf & _
+			"intitle:""Live View / - AXIS"" | inurl:view/view.shtml^" & VbCrLf & _
+			"inurl:ViewerFrame?Mode=" & VbCrLf & _
+			"inurl:ViewerFrame?Mode=Refresh" & VbCrLf & _
+			"inurl:axis-cgi/jpg" & VbCrLf & _
+			"#" & VbCrLf & _
+			"inurl:view/indexFrame.shtml" & VbCrLf & _
+			"inurl:view/index.shtml" & VbCrLf & _
+			"inurl:view/view.shtml" & VbCrLf & _
+			"liveapplet" & VbCrLf & _
+			"intitle:""live view"" intitle:axis" & VbCrLf & _
+			"intitle:liveapplet" & VbCrLf & _
+			"allintitle:""Network Camera NetworkCamera""" & VbCrLf & _
+			"intitle:axis intitle:""video server""" & VbCrLf & _
+			"intitle:liveapplet inurl:LvAppl" & VbCrLf & _
+			"intitle:""EvoCam"" inurl:""webcam.html""" & VbCrLf & _
+			"intitle:""Live NetSnap Cam-Server feed""" & VbCrLf & _
+			"intitle:""Live View / - AXIS""" & VbCrLf & _
+			"intitle:""Live View / - AXIS 206M""" & VbCrLf & _
+			"intitle:""Live View / - AXIS 206W""" & VbCrLf & _
+			"intitle:""Live View / - AXIS 210?" & VbCrLf & _
+			"inurl:indexFrame.shtml Axis" & VbCrLf & _
+			"inurl:""MultiCameraFrame?Mode=Motion""" & VbCrLf & _
+			"intitle:start inurl:cgistart" & VbCrLf & _
+			"intitle:""WJ-NT104 Main Page""" & VbCrLf & _
+			"intext:""MOBOTIX M1? intext:""Open Menu""" & VbCrLf & _
+			"intext:""MOBOTIX M10? intext:""Open Menu""" & VbCrLf & _
+			"intext:""MOBOTIX D10? intext:""Open Menu""" & VbCrLf & _
+			"intitle:snc-z20 inurl:home/" & VbCrLf & _
+			"intitle:snc-cs3 inurl:home/" & VbCrLf & _
+			"intitle:snc-rz30 inurl:home/" & VbCrLf & _
+			"intitle:""sony network camera snc-p1?" & VbCrLf & _
+			"intitle:""sony network camera snc-m1?" & VbCrLf & _
+			"site:.viewnetcam.com -www.viewnetcam.com" & VbCrLf & _
+			"intitle:""Toshiba Network Camera"" user login" & VbCrLf & _
+			"intitle:""netcam live image""" & VbCrLf & _
+			"intitle:""i-Catcher Console - Web Monitor"""
+		oSearchStringFile.Write(sSearchList)
+		Set oFile = oFSO.OpenTextFile(sSearchListFile, ForReading)
+    	If Err = 0 Then
+		    Do Until oFile.AtEndOfStream
+		        sLine = oFile.ReadLine
+		        Set oOption = document.createElement("OPTION")
+		        oOption.Text = sLine
+		        oOption.Value = sLine
+		        SearchStrings.Add(oOption)
+		    Loop
+	    	oFile.Close
+	    End If
+ 	End If
+End Sub
+
+Sub SearchStrings_OnChange()
+	Set oShell = CreateObject("WScript.Shell")
+	Set oIE = CreateObject("InternetExplorer.Application")
+	oIE.Visible = True
+	'oIE.FullScreen = True
+	oIE.Navigate "http://www.google.com/search?q=" & SearchStrings.Value
+	Do While oIE.Busy Or (oIE.READYSTATE <> 4)
+	    'WScript.Sleep 10
+	Loop
+	location.reload(True)
+End Sub
+
+
+</SCRIPT>
+
+<body STYLE="font:10 pt arial; color:black; 
+filter:progid:DXImageTransform.Microsoft.Gradient
+(GradientType=1, StartColorStr='#708090', EndColorStr='#D3D3D3')">
+		<td width = "23%" valign="top"><b><font color="Black" face="Times New Roman" size="3">Search Strings</font></b><BR><span id="strings">
+			<select name="SearchStrings" style="width:300">
+				 <option value="0"></option>
+			</select><br>
+			<span id=DataArea1><font color="Black" face="Times New Roman" size="2"></font></span>
+</body>
+</html>

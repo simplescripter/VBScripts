@@ -1,0 +1,123 @@
+<html>
+<head>
+<title>Drive Mapper</title>
+
+<HTA:APPLICATION 
+     ID="objDM"
+     APPLICATIONNAME="Drive Mapper"
+     SCROLL="no"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal"
+>
+</head>
+
+<style>
+
+BODY
+{
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 10pt;
+   margin-top: 10px;
+   margin-left: 20px;
+   margin-right: 20px;
+   margin-bottom: 10px;
+}
+
+
+.button
+{
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 92px;
+
+}
+
+textarea
+{
+   font-family: arial;
+   font-size: 8pt;
+}
+
+select
+{
+   font-family: arial;
+   font-size: 8pt;
+   width: 150px;
+   margin-left: 0px;
+}
+
+td
+{
+   font-family: arial;
+   font-size: 10pt;
+}
+</style>
+
+<SCRIPT Language="VBScript">
+
+Window.ResizeTo 400, 150
+Window.MoveTo 250, 200
+
+Sub Window_Onload
+	
+	On Error Resume Next
+	
+	If Err = 0 Then
+		set oFSO = CreateObject("Scripting.FileSystemObject")
+		drive = "C"
+		For i = 1 to 24
+			If oFSO.DriveExists(drive & ":") Then
+				iChar = Asc(drive)
+				drive = Chr(ichar + 1)
+			Else
+				Set objOption = document.createElement("OPTION")
+				objOption.Text = drive & ":"
+				objOption.Value = drive
+				Drives.Add(objOption)
+				iChar = Asc(drive)
+				drive = Chr(ichar + 1)
+			End If
+		Next
+	End If
+End Sub
+
+
+Sub Drives_OnChange()
+	
+	
+End Sub
+
+Sub MapIt
+	set oNetwork = CreateObject("Wscript.Network")
+	If TextBox.Value = "" Then
+		MsgBox "You must enter a path."
+	Else
+		oNetwork.MapNetworkDrive drives.value & ":", TextBox.Value
+		If Err = 0 Then
+			MsgBox "Success!"
+		Else
+			MsgBox "Mapping of " & drives.value & ":" & " to " & TextBox.Value & " failed."
+		End If
+	End If
+End Sub
+
+</SCRIPT>
+
+<body STYLE="font:10 pt arial; color:black; 
+filter:progid:DXImageTransform.Microsoft.Gradient
+(GradientType=1, StartColorStr='#708090', EndColorStr='#D3D3D3')">
+		<td width = "23%" valign="top"><b><font color="Black" face="Times New Roman" size="3">Available Drives</font></b><BR><span id="Drive Letters">
+			<select name="Drives" style="width:50">
+				 <option value="0"></option>
+			</select><b><font color="Black" face="Times New Roman" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbspPath</font></b>
+				<input type="text" name="TextBox" size="15"><br><br>
+				<input id=runbutton1  class="button" type="button" value="Map Drive" name="run_button1"  onClick="MapIt" title="Maps the drive letter to the UNC path.">
+			<span id=DataArea1><font color="Black" face="Times New Roman" size="2"></font></span>
+	
+				
+<body>
+
+
+</body>
+</html>
