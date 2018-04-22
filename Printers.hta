@@ -1,0 +1,51 @@
+<SCRIPT LANGUAGE = "VBScript">
+Sub window_onLoad
+ GetInfo
+ iTimerID = window.setInterval("GetInfo", 10000, "VBScript")
+End Sub
+Sub GetInfo
+ For i = (objTable.Rows.Length - 1) to 0 Step -1
+ myNewRow = Document.All.objTable.deleteRow(i)
+ Next
+ Set objRow = objTableBody.InsertRow()
+ objRow.Style.fontWeight = "bold"
+ Set objCell = objRow.InsertCell()
+ objCell.InnerText = "Name"
+ Set objCell = objRow.InsertCell()
+ objCell.InnerText = "Location"
+ Set objCell = objRow.InsertCell()
+ objCell.InnerText = "Status"
+ strComputer = "."
+ Set objWMIService = GetObject("winmgmts:" _
+ & "{impersonationLevel=impersonate}!\\" & _
+ strComputer & "\root\cimv2")
+ Set colPrinters = objWMIService.ExecQuery _
+ ("SELECT * FROM Win32_Printer")
+ For Each objPrinter in colPrinters
+ Set objRow = objTableBody.InsertRow()
+ Set objCell = objRow.InsertCell()
+ objCell.InnerText = objPrinter.Name
+ Set objCell = objRow.InsertCell()
+ objCell.InnerText = objPrinter.Location
+ Set objCell = objRow.InsertCell()
+ Select Case objPrinter.PrinterStatus
+ Case 1
+ strPrinterStatus = "Other"
+ Case 2
+ strPrinterStatus = "Unknown"
+ Case 3
+ strPrinterStatus = "Idle"
+ Case 4
+ strPrinterStatus = "Printing"
+ Case 5
+ strPrinterStatus = "Warming up"
+ End Select
+ objCell.InnerText = strPrinterStatus
+ Next
+End Sub
+</SCRIPT>
+<TABLE ID = "objTable" border = "1" >
+<TBODY ID = "objTableBody">
+</TBODY>
+</TABLE>
+

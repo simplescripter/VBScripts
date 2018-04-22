@@ -1,0 +1,1480 @@
+<html>
+<!--Written by Shawn Stugart
+	sstugart@nhconn.com
+	Last Updated: 4-23-2010
+		5-31-2007: Added "Remove failed names from list"
+			option in MapScan
+		11-2007: Added the HTAEcho and ForceRefresh procedures, along
+			with code to call them.
+			--Added the Display Progress checkbox to call HTAEcho, 
+			and I moved some of the MsgBox displays to HTAEcho 
+			(removed the DataArea, too)
+			--Changed formatting of the firewall Open/Close buttons, and 
+			moved the password field.
+			--Added the Logged On User button and subroutine
+		4-24-2008: Changed machine list path from C:\clients.txt to C:\Script\Clients.txt
+				for compatibility with Vista systems (Vista doesn't like you to write files
+				to the root of C:)
+		8-20-2008: Changed window.moveto and window.resizeto values in Sub Window_OnLoad to include
+				SetTimeout pauses.  An MS update caused my window move/resize to throw up
+				an Access Denied error, and I found a posting describing a race condition
+				and the fix: http://www.gthelp.com/showthread.php?p=618308
+		12-28-2009: Added "Remove Failed Pings from System List"
+			option, for all systems and individual systems 
+			--Changed SendBeep routine to Speak	
+		4-23-2010: Added the Sleep subroutine to simulate WScript.Sleep and fixed the SendVoice
+			sub to work with Windows 7.		
+-->
+
+<head>
+ <title>Shawn's Script Console</title>
+
+ <HTA:APPLICATION 
+     ID="oAdminHTA"
+     APPLICATIONNAME="Admin HTA"
+     SCROLL="yes"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal"
+ >
+</head>
+
+<style>
+BODY
+{
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 10pt;
+   margin-top: 10px;
+   margin-left: 20px;
+   margin-right: 20px;
+   margin-bottom: 10px;
+}
+
+
+.button
+{
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 92px;
+
+}
+
+textarea
+{
+   font-family: arial;
+   font-size: 8pt;
+}
+
+select
+{
+   font-family: arial;
+   font-size: 8pt;
+   width: 150px;
+   margin-left: 0px;
+}
+
+td
+{
+   font-family: arial;
+   font-size: 10pt;
+}
+
+</style>
+
+
+<SCRIPT Language="VBScript">
+Sub Window_Onload
+	window.setTimeout "window.moveto 75,10", 100
+	window.setTimeout "window.resizeto 565,560", 100
+	'window.moveto 75,10
+	'window.resizeto 565,560
+	On Error Resume Next
+	dtmProgress = Time
+	sMsgLoad = "Loading System List."
+	HTAEcho sMsgLoad
+    ForReading = 1
+    strNewFile = "C:\Script\Clients.txt"
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    If Not objFSO.FolderExists("C:\Script") Then
+    	objFSO.CreateFolder("C:\Script")
+    End If 
+    Set objFile = objFSO.OpenTextFile _
+        (strNewFile, ForReading)
+    If Err = 0 Then
+	    Do Until objFile.AtEndOfStream
+	    	If DateDiff("s",dtmProgress,Time) > 2 Then
+	    		sMsgLoad = sMsgLoad & "."
+	    		HTAEcho sMsgLoad
+	    		dtmProgress = DateAdd("s", 2, dtmProgress)
+		    End If
+	        strLine = objFile.ReadLine
+	        Set objOption = document.createElement("OPTION")
+	        objOption.Text = strLine
+	        objOption.Value = strLine
+	        AvailableComputers.Add(objOption)
+	    Loop
+	    objFile.Close
+	End If
+	HTAEcho ""
+End Sub
+
+Sub Telnet
+	On Error Resume Next
+	strComputer = GetBoxes
+	For i = 0 To UBound(strComputer)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & strComputer(i)
+		End If
+	    Set objWMIService = GetObject("winmgmts:\\" & strComputer(i) & "\root\cimv2")
+	    Set colItems = objWMIService.ExecQuery("Select * from Win32_Service Where Name='Tlntsvr'")
+		If Err = 0 Then
+		    For Each objItem in colItems
+		        If objItem.StartMode = "Manual" Or objItem.StartMode = "Disabled" Then
+		            errReturnCode = objItem.Change( , , , , "Automatic")
+		            errReturn = objItem.StartService()
+		            If errReturnCode <> 0 Then
+		                sResult = sResult & "Could not set startmode to Automatic on " & strComputer(i) & VbCrLf
+						Err.Clear
+					Else
+						sResult = sResult & "Successfully started Telnet service on " & strComputer(i) & VbCrLf
+					End If
+				Else
+					errReturn = objItem.StartService()
+					sResult = sResult & "Successfully started Telnet service on " & strComputer(i) & vbCrLf
+				End If
+			Next
+		Else
+			sResult = sResult & "Couldn't read " & strComputer(i) & vbCrLf
+			Err.Clear
+		End If
+	Next
+	If sResult <> "" Then
+		PopUp sResult
+	End If
+End Sub
+
+Sub QueryProcs
+	On Error Resume Next
+	ClearProcessList
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		If PingCheck.Checked Then
+			If Pinger(strComputer) = 1 Then 
+				For Each proc in GetObject("WinMgmts:\\" & strComputer).InstancesOf("Win32_Process")
+			    	strLine = proc.Name
+			        Set objOption = Document.createElement("OPTION")
+			        objOption.Text = strLine
+			        objOption.Value = strLine
+			        Processes.Add(objOption)
+				Next
+				If Err <> 0 Then
+					sResult = sResult & "Can't collect running processes on " & strComputer & vbCrLf
+					sResult = sResult &  Err.Number & " " & Err.Description
+					Err.Clear
+					MsgBox sResult
+				End If
+			Else
+				MsgBox strComputer & " did not respond to ping."
+			End If
+		Else
+			For Each proc in GetObject("WinMgmts:\\" & strComputer).InstancesOf("Win32_Process")
+		    	strLine = proc.Name
+		        Set objOption = document.createElement("OPTION")
+		        objOption.Text = strLine
+		        objOption.Value = strLine
+		        Processes.Add(objOption)
+			Next
+			If Err <> 0 Then
+				sResult = sResult & "Can't collect running processes on " & strComputer & vbCrLf
+				sResult = sResult &  Err.Number & " " & Err.Description
+				Err.Clear
+				MsgBox sResult
+			End If
+		End If
+		HTAEcho ""
+		Processes.Disabled = False
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub KillProc
+	On Error Resume Next
+	strProcess = "'" & Processes.Value & "'"
+	Do While strProcess = "0"
+		runbutton3.Disabled = True
+	Loop
+	runbutton3.Disabled = False
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		Set objWMIService = GetObject("winmgmts:" _
+		    & "{impersonationLevel=impersonate}!\\" & strComputer & "\root\cimv2")
+		Set colProcessList = objWMIService.ExecQuery _
+		    ("SELECT * FROM Win32_Process WHERE Name = " & strProcess & "")
+		For Each objProcess in colProcessList
+		    retVal = objProcess.Terminate()
+		Next
+		If retVal = 0 Then
+			MsgBox Processes.Value & " terminated on " & AvailableComputers.Value
+		Else
+			MsgBox "FAILED to kill " & Processes.Value & " on " & AvailableComputers.Value
+		End If
+		QueryProcs
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub GetOSVersion
+	On Error Resume Next
+	strComputer = GetBoxes
+	For i = 0 To UBound(strComputer)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & strComputer(i)
+		End If
+    	Set objWMIService = GetObject("winmgmts:\\" & strComputer(i) &  "\root\cimv2")
+    	Set colOperatingSystems = objWMIService.ExecQuery _
+        	("Select * from Win32_OperatingSystem")
+   		For Each objOperatingSystem in colOperatingSystems
+    		If Err = 0 Then
+	        	sResult = sResult & "<br>" & strComputer(i) & ": " & objOperatingSystem.Caption _
+	            	& " Service Pack " & objOperatingSystem.ServicePackMajorVersion  _
+	        		& "." & objOperatingSystem.ServicePackMinorVersion
+	   		Else
+	    		sResult = sResult & "<br>" & "Error reading " & strComputer(i) & "    " _
+	    			& Err.Number & " " & Err.Description
+	    		Err.Clear
+	    	End If
+    	Next
+    Next
+    ' If sResult <> "" Then
+' 		Popup sResult
+' 	End If
+	HTAEcho sResult
+	'HTAEcho ""
+End Sub
+
+Sub CreateClients
+	Dim oShell, oFSO, oClientScript
+	Set oShell = CreateObject("WScript.Shell")
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	Set oClientScript = oFSO.CreateTextFile("C:\Script\CreateClients.vbs", True)
+	oClientScript.WriteLine "Option Explicit"
+	oClientScript.WriteLine "Dim intIPSubnet, oFSO, oShell, oClientsTxt, i, j, k, oScriptExec1"
+	oClientScript.WriteLine "Dim strPingStdOut1, oScriptExec2, strPingStdOut2, strClient"
+	oClientScript.WriteLine "WScript.StdOut.Write(" & Chr(34) & "Enter starting host ID to scan: " & Chr(34) & ")"
+	oClientScript.WriteLine "j = WScript.StdIn.ReadLine"
+	oClientScript.WriteLine "WScript.StdOut.Write(" & chr(34) & "Enter ending host ID to scan: " & Chr(34) & ")"
+	oClientScript.WriteLine "k = WScript.StdIn.ReadLine"
+	oClientScript.WriteLine "WScript.StdOut.Write(" & chr(34) & "Enter network ID (For example, 192.168.1): " & Chr(34) & ")"
+	oClientScript.WriteLine "intIPSubnet = WScript.StdIn.Readline"
+	oClientScript.WriteLine "Set oFSO = CreateObject(" & chr(34) & "Scripting.FileSystemObject" & Chr(34) & ")"
+	oClientScript.WriteLine "Set oShell = CreateObject(" & chr(34) & "WScript.Shell" & Chr(34) & ")"
+	oClientScript.WriteLine "Set oClientsTxt = oFSO.CreateTextFile(" & chr(34) & "C:\Script\Clients.txt" & Chr(34) & ", True)"
+	oClientScript.WriteLine "For i = j To k"
+	oClientScript.WriteLine "set oScriptExec1 = oShell.Exec(" & chr(34) & "ping -n 1 -w 50 " & Chr(34) & " & intIPSubnet & ""."" & i)"
+	oClientScript.WriteLine "WScript.Echo " & chr(34) & "Pinging " & Chr(34) & " & intIPSubnet & ""."" & i"
+	oClientScript.WriteLine "strPingStdOut1 = Lcase(oScriptExec1.StdOut.ReadAll)"
+	oClientScript.WriteLine "If InStr(strPingStdOut1, " & chr(34) & "reply from " & Chr(34) & ") Then"
+	If ResolveIt.Checked Then
+		oClientScript.WriteLine "set oScriptExec2 = oShell.Exec(" & Chr(34) & "ping -a -n 1 -w 25 " & Chr(34) & " & intIPSubnet & ""."" & i)"
+	Else
+		oClientScript.WriteLine "set oScriptExec2 = oShell.Exec(" & Chr(34) & "ping -n 1 -w 25 " & Chr(34) & " & intIPSubnet & ""."" & i)"
+	End If
+	oClientScript.WriteLine "oScriptExec2.StdOut.SkipLine"
+	oClientScript.WriteLine "strPingStdOut2 = Lcase(oScriptExec2.StdOut.ReadLine)"
+	oClientScript.WriteLine "strClient = Split(strPingStdOut2," & Chr(34) & Chr(32) & Chr(34) & ",3,1)"
+	oClientScript.WriteLine "oClientsTxt.WriteLine(strClient(1))"
+	oClientScript.WriteLine "End If"
+	oClientScript.WriteLine "Next"
+	oClientScript.Close
+	
+	oShell.Run "%comspec% /c " & "cscript " & Chr(34) & "C:\Script\CreateClients.vbs" & Chr(34),,True
+	location.Reload(True)
+End Sub
+
+Sub ShutItDown
+	On Error Resume Next
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		If PingCheck.Checked Then
+			If Pinger(strComputer) = 1 Then
+			    Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+			    Set colOperatingSystems = objWMIService.ExecQuery _
+			        ("Select * from Win32_OperatingSystem")
+			    For Each objOperatingSystem in colOperatingSystems
+					objOperatingSystem.Win32Shutdown(1 + 4)
+				Next
+				If Err = 0 Then
+					MsgBox "Shutting Down " & AvailableComputers.Value
+				Else
+					MsgBox "SHUTDOWN FAILED"
+				End If
+			Else
+				MsgBox strComputer & " could not be pinged. Operation terminated."
+			End If
+		Else
+			Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+		    Set colOperatingSystems = objWMIService.ExecQuery _
+		        ("Select * from Win32_OperatingSystem")
+		    For Each objOperatingSystem in colOperatingSystems
+				objOperatingSystem.Win32Shutdown(1 + 4)
+			Next
+			If Err = 0 Then
+				MsgBox "Shutting Down " & AvailableComputers.Value
+			Else
+				MsgBox "SHUTDOWN FAILED"
+			End If
+		End If
+	Else
+		ManageAll(1)
+	End If
+	HTAEcho ""
+End Sub
+
+Sub Reboot
+	On Error Resume Next
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		If PingCheck.Checked Then
+			If Pinger(strComputer) = 1 Then
+			    Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+			    Set colOperatingSystems = objWMIService.ExecQuery _
+			        ("Select * from Win32_OperatingSystem")
+			    For Each objOperatingSystem in colOperatingSystems
+					objOperatingSystem.Win32Shutdown(2 + 4)
+				Next
+				If Err = 0 Then
+					MsgBox "Rebooting " & AvailableComputers.Value
+				Else
+					MsgBox "REBOOT FAILED"
+				End If
+			Else
+				MsgBox "Couldn't ping " & strComputer & ". Operation terminated."
+			End If
+		Else
+		 	Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+		    Set colOperatingSystems = objWMIService.ExecQuery _
+		        ("Select * from Win32_OperatingSystem")
+		    For Each objOperatingSystem in colOperatingSystems
+				objOperatingSystem.Win32Shutdown(2 + 4)
+			Next
+			If Err = 0 Then
+				MsgBox "Rebooting " & AvailableComputers.Value
+			Else
+				MsgBox "REBOOT FAILED"
+			End If
+		End If
+	Else
+		ManageAll(2)
+	End If
+	HTAEcho ""
+End Sub
+
+Sub LogOff
+	On Error Resume Next
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		If PingCheck.Checked Then
+			If Pinger(strComputer) = 1 Then
+		    Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+		    Set colOperatingSystems = objWMIService.ExecQuery _
+		        ("Select * from Win32_OperatingSystem")
+		    For Each objOperatingSystem in colOperatingSystems
+				objOperatingSystem.Win32Shutdown(0 + 4)
+			Next
+			If Err = 0 Then
+				MsgBox "Logging Off " & AvailableComputers.Value
+			Else
+				MsgBox "LOGOFF FAILED"
+				End If
+			Else
+				MsgBox "Couldn't ping " & strComputer & ".  Operation terminated."
+			End If
+		Else
+		 	Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+		    Set colOperatingSystems = objWMIService.ExecQuery _
+		        ("Select * from Win32_OperatingSystem")
+		    For Each objOperatingSystem in colOperatingSystems
+				objOperatingSystem.Win32Shutdown(0 + 4)
+			Next
+			If Err = 0 Then
+				MsgBox "Logging Off " & AvailableComputers.Value
+			Else
+				MsgBox "LOGOFF FAILED"
+			End If
+		End If
+	Else
+		ManageAll(0)
+	End If
+	HTAEcho ""
+End Sub
+
+Sub ManageAll(iType)
+	iContinue = MsgBox("Are you sure you want to perform this action " _
+			& "on EVERY computer in the list?",vbYesNo + vbCritical _
+			+ vbDefaultButton2, "WARNING!!!")
+	On Error Resume Next
+	If iContinue = vbYes Then
+		If RandomPWDCheck = 1 Then
+			If PingCheck.Checked Then
+				For Each oOption In AvailableComputers.Options
+					If Pinger(oOption.Value) = 1 Then
+						If oOption.Value <> "0" Then
+							strComputer = oOption.Value
+							If DisplayProgress.Checked Then
+								HTAEcho "Trying " & strComputer
+							End If
+							Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+			    			Set colOperatingSystems = objWMIService.ExecQuery _
+			        			("Select * from Win32_OperatingSystem")
+			    			For Each objOperatingSystem in colOperatingSystems
+								objOperatingSystem.Win32Shutdown(int(iType) + 4)
+							Next
+							If Err = 0 Then
+								sResult = sResult & oOption.Value & " ---SUCCESS." & vbCrLf
+							Else
+								sResult = sResult & "OPERATION FAILED ON " & oOption.Value & vbCrLf
+							End If
+						End If
+					Else
+						sResult = sResult & "Couldn't ping " & oOption.Value & vbCrLf
+					End If
+				Next
+			Else
+				For Each oOption In AvailableComputers.Options
+					If oOption.Value <> "0" Then
+						strComputer = oOption.Value
+						If DisplayProgress.Checked Then
+							HTAEcho "Trying " & strComputer
+						End If
+						Set objWMIService = GetObject("winmgmts:\\" & strComputer &  "\root\cimv2")
+		    			Set colOperatingSystems = objWMIService.ExecQuery _
+		        			("Select * from Win32_OperatingSystem")
+		    			For Each objOperatingSystem in colOperatingSystems
+							objOperatingSystem.Win32Shutdown(int(iType) + 4)
+						Next
+						If Err = 0 Then
+							sResult = sResult & oOption.Value & " ---SUCCESS." & vbCrLf
+						Else
+							sResult = sResult & "OPERATION FAILED ON " & oOption.Value & vbCrLf
+						End If
+					End If
+				Next
+			End If
+			If sResult <> "" Then
+				PopUp sResult
+			End If
+		Else
+			MsgBox "Incorrect code.  Exiting."
+		End If
+	End If
+End Sub
+
+Sub PingIt
+	Dim iPingTimeOut, colItems, oItem, oWMI
+	If AvailableComputers.Value <> "0" Then
+		sComp = AvailableComputers.Value
+		iPingTimeOut = "100"
+		On Error Resume Next
+		Set oWMI = GetObject("WinMgmts://")
+		Set colItems = oWMI.ExecQuery("Select * from Win32_PingStatus " _
+			& "Where Address = '" & sComp & "'" _
+			& "AND Timeout =" & iPingTimeOut, "WQL", 48)
+		If Err.Number <> 0 Then 'For pre-XP/2003 Machines that don't support Win32_PingStatus
+			Err.Clear
+			Dim oShell, oScriptExec
+			Set oShell = CreateObject("WScript.Shell")
+			Set oScriptExec = oShell.Exec("%comspec% /c ping -n 1 -w 200 " & sComp)
+			On Error Resume Next
+			Do Until oScriptExec.StdOut.AtEndOfStream
+				sPingData = sPingData & oScriptExec.StdOut.ReadLine & "<br>"
+			Loop
+			HTAEcho sPingData
+		Else
+		   For Each oItem In colItems
+		   	   Select Case oItem.StatusCode
+		        	Case "0"
+		        		HTAEcho sComp & " PING SUCCESS"
+		        	Case "11002"
+		        		HTAEcho sComp & " PING ERROR: Destination Net Unreachable"
+		        	Case "11003"
+		        		HTAEcho sComp & " PING ERROR: Destination Host Unreachable"
+		        	Case "11010"
+		        		HTAEcho sComp & " PING ERROR: Request Timed Out"
+		        	Case "11013"
+		        		HTAEcho sComp & " PING ERROR: Time-to-Live Expired in Transit"
+		        	Case Else
+		        		HTAEcho sComp & " PING ERROR: An unexpected error code was returned"
+		        End Select
+		    Next
+		End If
+	Else
+		HTAEcho "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub RemoteDesktop
+	const HKEY_LOCAL_MACHINE = &H80000002
+	On Error Resume Next
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		Set oReg = GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & _ 
+			strComputer & "\root\default:StdRegProv")
+		strKeyPath = "SYSTEM\CurrentControlSet\Control\Terminal Server"
+		strValueName = "fDenyTSConnections"
+		oReg.GetDWORDValue HKEY_LOCAL_MACHINE,strKeyPath,strValueName,dwValue
+		If Err = 0 Then
+			If dwValue = 1 Then
+			    valPrompt = MsgBox("Remote Desktop is Currently disabled.  Do you want to ENABLE it?", vbYesNo)
+			    If valPrompt = vbYes Then 'note: "prompt" is apparently a reserved keyword in .HTAs
+				    dwValue = 0
+				    oReg.SetDWORDValue HKEY_LOCAL_MACHINE,strKeyPath,strValueName,dwValue
+				    MsgBox "Remote Desktop is now ENABLED on " & AvailableComputers.Value
+				    Crawler.InnerHTML = "Remote Desktop is now ENABLED on " & AvailableComputers.Value
+			    ElseIf valPrompt = vbNo then
+				    MsgBox "Remote Desktop is still DISABLED."
+			    End If
+			ElseIf dwValue = 0 Then
+			  	valPrompt = MsgBox ("Remote Desktop is Currently ENABLED.  Do you want to DISABLE it?", vbYesNo)
+			  	If valPrompt = vbYes then
+				    dwValue = 1
+				    oReg.SetDWORDValue HKEY_LOCAL_MACHINE,strKeyPath,strValueName,dwValue
+				    MsgBox "Remote Desktop is now DISABLED on " & AvailableComputers.Value
+				    Crawler.InnerHTML = "Remote Desktop is now DISABLED on " & AvailableComputers.Value
+			    ElseIf valPrompt = vbNo then
+				    MsgBox "Remote Desktop is still ENABLED on " & AvailableComputers.Value
+				    Crawler.InnerHTML = "Remote Desktop is still ENABLED on " & AvailableComputers.Value
+			    End If
+			Else
+				MsgBox "Couldn't set Remote Desktop on " & AvailableComputers.Value & vbCrLf _
+				& "Check that the remote system is available and that it supports Remote Desktop."
+			End If
+		Else
+			MsgBox "Couldn't set Remote Desktop on " & AvailableComputers.Value & vbCrLf _
+				& "Check that the remote system is available and that it supports Remote Desktop."
+		End If
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub ClearPing
+	location.Reload(True)
+End Sub
+
+Sub MapIt
+	sCompName = AvailableComputers.Value
+	sPassword = PasswordArea.Value
+	If sCompName <> "0" Then
+		Set oNet = CreateObject("WScript.Network")
+		On Error Resume Next
+		If sPassword = "" Then
+			iResponse = MsgBox("You did not enter a password for the " & sAuth & " account in the " _
+			& "password field below.  Click Yes to continue with a blank " _
+			& "password, or No to quit." & VbCrLf & VbCrLf & "Continue?",vbYesNo)
+			If iResponse = vbYes Then
+				sAuth = InputBox("Enter the administrator name:")
+				If sAuth = "" Then
+					sNothing = "" 'I guess .HTA's don't like WScript.Quit, either, so
+							' we'll do some useless work in this If...Then test
+				Else
+					oNet.RemoveNetworkDrive "X:",True
+					Err.Clear
+				    oNet.MapNetworkDrive "X:", "\\" & sCompName & "\C$",, sAuth, sPassword
+				    If Err.Number = 0 Then
+				    	HTAEcho "***SUCCESS***      C$ Mapped to X: as " _
+				    		& sAuth & " on " & sCompName
+				    Else
+				    	HTAEcho sCompName & ": FAILED mapping as " & sAuth & "<br>" _
+				    		& Err.Description
+				    	Err.Clear
+				    End If
+				End If
+			End If
+		Else
+			sAuth = InputBox("Enter the administrator name:")
+			If sAuth = "" Then
+				sNothing = "" 'I guess .HTA's don't like WScript.Quit, either, so
+							' we'll do some useless work in this If...Then test
+			Else
+				oNet.RemoveNetworkDrive "X:",True
+				Err.Clear
+			    oNet.MapNetworkDrive "X:", "\\" & sCompName & "\C$",, sAuth, sPassword
+			    If Err.Number = 0 Then
+			    	HTAEcho "***SUCCESS***      C$ Mapped to X: as " _
+				    	& sAuth & " on " & sCompName
+			    Else
+			    	HTAEcho sCompName & ": FAILED mapping as " & sAuth & "<br>" _
+				    	& Err.Description
+			    	Err.Clear
+			    End If
+			End If
+		End If
+	Else
+		HTAEcho "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub AddLocalAdmin
+	
+	Const ForReading = 1
+	dim sFileName, oFSO, oInputFile, oUser, oDom
+	dim sComputer, oScriptExec, oShell, oAdmin, oGroup, iResponse
+	Dim sPingStdOut, sNewPassword, hostname, sAdmin, sResult
+	
+	On Error Resume Next
+	
+	sNewPassword = PasswordArea.Value
+	If sNewPassword = "" Then
+		iResponse = MsgBox("You did not enter a password for the new account(s) in the " _
+			& "password field below.  Click Yes to continue with a blank " _
+			& "password, or No to quit." & VbCrLf & VbCrLf & "Continue?",vbYesNo)
+		If iResponse = vbYes Then
+			CreateAdmin(sNewPassword)
+		End If
+	Else
+		CreateAdmin(sNewPassword)
+	End If
+End Sub
+
+Sub CreateAdmin(sNewPassword)
+	On Error Resume Next
+	sAdmin = InputBox("Enter new administrator name:")
+	If sAdmin = "" Then
+		sNothing = ""
+	Else 
+		sComputer = GetBoxes
+		For i = 0 To UBound(sComputer)
+			sComputerIP = sComputer(i)
+			sComputer(i) = GetName(sComputerIP)
+			If DisplayProgress.Checked Then
+				HTAEcho "Trying " & sComputer(i)
+			End If
+			Set oDom = GetObject("WinNT://" & sComputer(i))
+			If Err.Number = 0 Then
+				Set oUser = oDom.Create("user", sAdmin)
+				oUser.SetPassword sNewPassword
+				oUser.SetInfo
+				If Err.Number = 0 Then
+					Set oGroup = GetObject("WinNT://" & sComputer(i) & "/Administrators,group")
+					Set sUserPath = GetObject("WinNT://" & sComputer(i) & "/" & sAdmin & ",user")
+					oGroup.Add(sUserPath.ADsPath)
+				    oUser.AccountDisabled = False
+				    oUser.SetInfo
+				    Set oDom = Nothing
+				    Set oGroup = Nothing
+				    Set oUser = Nothing
+				    sResult = sResult & sAdmin & " account created and added to Administrators group on " & sComputer(i) & VbCrLf
+				Else
+					sResult = sResult & "FAILED to create " & sAdmin & " account on " & sComputerIP & VbCrLf
+			    	Err.Clear
+				End If
+			Else
+			    sResult = sResult & "FAILED to create " & sAdmin & " account on " & sComputerIP & VbCrLf
+			    Err.Clear
+			End If 
+		Next
+	End If
+	If sResult <> "" Then
+		PopUp sResult
+	End If
+End Sub
+
+Function GetName(sIP)
+	On Error Resume Next
+	Dim oWMI, colItems, oItem, sCompName 
+	Set oWMI = GetObject("winmgmts:\\" & sIP & "\root\CIMV2")
+   	Set colItems = oWMI.ExecQuery("SELECT name FROM Win32_ComputerSystem", "WQL", 48)
+   	For Each oItem In colItems
+   	  	sCompName = oItem.Name
+   	Next
+   	GetName = sCompName
+End Function
+
+Sub RemoteToIt
+	strComputer = AvailableComputers.Value
+	If strComputer <> "0" Then
+		Set oShell = CreateObject("WScript.Shell")
+		oShell.Run("mstsc.exe /f /v:" & strComputer)
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub ClearProcessList
+    For Each objOption In Processes.Options
+        objOption.RemoveNode
+    Next
+    Set objOption = document.createElement("OPTION")
+    objOption.Text = "Select a process"
+	objOption.Value = "0"
+    Processes.Add(objOption)
+End Sub
+
+Sub StopTelnet
+	On Error Resume Next
+	strComputer = GetBoxes
+	For i = 0 To UBound(strComputer)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & strComputer(i)
+		End If
+	    Set objWMIService = GetObject("winmgmts:\\" & strComputer(i) & "\root\cimv2")
+	    Set colItems = objWMIService.ExecQuery("Select * from Win32_Service Where Name='Tlntsvr'")
+		If Err = 0 Then
+		    For Each objItem in colItems
+		        If objItem.Started = True Then
+		            errReturn = objItem.StopService()
+		            If errReturnCode <> 0 Then
+		                sResult = sResult & "Could not stop Telnet Service on " & strComputer(i) & VbCrLf
+						Err.Clear
+					Else
+						sResult = sResult & "Successfully stopped Telnet service on " & strComputer(i) & VbCrLf
+					End If
+				Else
+					sResult = sResult & "Telnet is not started on " & strComputer(i) & VbCrLf
+				End If
+			Next
+		Else
+			sResult = sResult & "Couldn't read " & strComputer(i) & VbCrLf
+			Err.Clear
+		End If
+	Next
+	If sResult <> "" Then
+		PopUp sResult
+	End If
+End Sub
+
+Sub CopyURLLink
+	Const ForReading = 1
+	Const ForAppending = 8
+	Dim strFileName, oFSO, oShell, oInputFile, strLinkName
+	Dim strComputer, oNet, strDesktop, oURLLink, iResponse, strLinkTarget
+	
+	On Error Resume Next
+	strDesktop = "Documents and Settings\All Users\Desktop\"
+	strFileName = "Script\clients.txt"
+	set oShell = CreateObject("WScript.Shell")
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	set oInputFile = oFSO.OpenTextFile("c:\" & strFileName, ForReading)
+	If AvailableComputers.Value = "0" Then
+		iResponse = MsgBox("Are you sure you want to copy the link to EVERY " _
+			& "computer in the list?",vbYesNo)
+		If iResponse = vbYes Then
+			strLinkName = InputBox("Enter a name for the link:")
+			If strLinkName <> "" Then
+				strLinkTarget = InputBox("Enter the URL:")
+				If strLinkTarget <> "" Then
+					sComputers = GetBoxes
+					For i = 0 To UBound(sComputers)
+					    Set oNet = CreateObject("WScript.Network")
+						strComputer = sComputers(i)
+						If DisplayProgress.Checked Then
+							HTAEcho "Trying " & strComputer
+						End If
+						oNet.MapNetworkDrive "X:", "\\" & strComputer & "\C$"
+						set oURLLink = oShell.CreateShortcut("X:\" & strDesktop & strLinkName & ".url")
+						oURLLink.TargetPath = strLinkTarget
+						oURLLink.Save
+						If Err = 0 Then
+						    strResult = strResult & "Copied shortcut to " & strComputer & VbCrLf
+						Else
+						    strResult = strResult & "FAILED: " & strComputer & VbCrLf
+						    Err.Clear
+						End If
+						oNet.RemoveNetworkDrive "X:", True
+					Next
+					If strResult <> "" Then
+						PopUp strResult
+					End If
+				End If
+			End If
+		End If
+	Else
+		strLinkName = InputBox("Enter a name for the link:")
+		If strLinkName <> "" Then
+			strLinkTarget = InputBox("Enter the URL:")
+			If strLinkTarget <> "" Then
+				Set oNet = CreateObject("WScript.Network")
+				sComputers = GetBoxes
+				For i = 0 To UBound(sComputers)
+					strComputer = sComputers(i)
+					If DisplayProgress.Checked Then
+						HTAEcho "Trying " & strComputer
+					End If
+					oNet.MapNetworkDrive "X:", "\\" & strComputer & "\C$"
+					set oURLLink = oShell.CreateShortcut("X:\" & strDesktop & strLinkName & ".url")
+					oURLLink.TargetPath = strLinkTarget
+					oURLLink.Save
+					If Err = 0 Then
+					    strResult = strResult & "Copied shortcut to " & strComputer & VbCrLf
+					Else
+					    strResult = strResult & "FAILED: " & strComputer & VbCrLf
+					    Err.Clear
+					End If
+					oNet.RemoveNetworkDrive "X:", True
+				Next
+				If strResult <> "" Then
+					PopUp strResult
+				End If
+			End If
+		End If
+	End If
+End Sub
+
+Sub TabAutoComplete
+	const HKEY_LOCAL_MACHINE = &H80000002
+	const ForReading = 1
+	
+	Dim sFileName, oShell, oFSO, oInputFile, iResponse
+	Dim sComputer, sResult
+
+	On Error Resume Next
+	
+	If AvailableComputers.Value = "0" Then
+		MsgBox "You forgot to pick a computer...." 
+	Else
+		sComputer = AvailableComputers.Value
+		Set oReg = GetObject("winmgmts:{impersonationLevel=impersonate}!\\" &_ 
+    	sComputer & "\root\default:StdRegProv")
+	    If Err.Number = 0 Then
+	    	dwValue = "9"
+	        sKeyPath = "SOFTWARE\Microsoft\Command Processor"
+			sValueName = "CompletionChar"
+			oReg.SetDWORDValue HKEY_LOCAL_MACHINE,sKeyPath,sValueName,dwValue
+			If Err.Number = 0 Then
+				sResult = sResult & "Set Command Processor Tab Auto-Complete on " & sComputer & vbCrLf
+			Else
+				sResult = sResult & "FAILED on " & sComputer & vbCrLf
+			End If
+		Else
+			sResult = sResult & "FAILED to bind to the registry on " & sComputer & vbCrLf
+	    End If
+	    PopUp sResult
+	End If
+End Sub
+
+Sub LockBoxButton
+	Dim sResult
+	sComputer = AvailableComputers.Value
+	If sComputer = "0" Then
+		iContinue = MsgBox("Are you sure you want to perform this action " _
+			& "on EVERY computer in the list?",vbYesNo + vbCritical _
+			+ vbDefaultButton2, "WARNING!!!")
+		On Error Resume Next
+		If iContinue = vbYes Then
+			If RandomPWDCheck = 1 Then
+				strComputer = GetBoxes
+				For i = 0 To UBound(strComputer)
+					If DisplayProgress.Checked Then
+						HTAEcho "Trying " & strComputer(i)
+					End If
+					sResult = sResult & LockBox("Rundll32.exe user32.dll,LockWorkStation", strComputer(i), "0")
+				Next
+			Else
+				MsgBox "Incorrect code.  Exiting."
+			End If
+		End If
+	Else
+		strComputer = GetBoxes
+		For i = 0 To UBound(strComputer)
+			sResult = sResult & LockBox("Rundll32.exe user32.dll,LockWorkStation", strComputer(i), "1")
+		Next
+	End If
+	If sResult <> "" Then
+  	  	Popup sResult
+  	End If
+End Sub
+
+Function LockBox (sCommandLine, sBoxName, iMode)
+  On Error Resume Next
+  Set Proc = GetObject("WinMgmts:\\" & sBoxName & "\root\cimv2:Win32_Process")
+  If Err.Number = 0 Then
+	  errReturn = Proc.Create(sCommandLine, null, null, intProcessID)
+	  If iMode = "1" Then
+		  If errReturn = 0 Then
+			MsgBox "SUCCESS -- Locked " & sBoxName & VbCrLf
+		  Else
+			MsgBox "FAILED LOCKING " & sBoxName & VbCrLf
+		  End If
+	  Else
+	  	  If Err.Number = 0 Then
+		      LockBox = "SUCCESS -- Locked " & sBoxName & VbCrLf
+		  Else
+			  LockBox = "FAILED LOCKING " & sBoxName & VbCrLf
+		  End If
+	  End If
+	  Set Proc = Nothing
+  Else
+  	LockBox = "FAILED LOCKING " & sBoxName & VbCrLf
+  	Err.Clear 
+  End If
+  HTAEcho ""
+End Function
+
+Sub EditClients()
+	Set oShell = CreateObject("WScript.Shell")
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	sClientsFile = "C:\Script\Clients.txt"
+	
+	On Error Resume Next
+	
+	If oFSO.FileExists(sClientsFile) Then
+		oShell.Run "notepad " & sClientsFile, , True
+		location.Reload(True)
+	Else
+		oFSO.CreateTextFile(sClientsFile)
+		oShell.Run "notepad " & sClientsFile, , True
+		location.Reload(True)
+	End If
+End Sub
+
+Sub LoadFromAD()
+	Const ADS_SCOPE_SUBTREE = 2
+	Const adOpenStatic = 3
+	Const adLockOptimistic = 3
+	Const adUseClient = 3
+
+	On Error Resume Next
+	sFileName = "C:\Script\clients.txt"
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	Set oRootDSE = GetObject("LDAP://RootDSE")
+	sDomain = oRootDSE.Get("defaultNamingContext")
+	If Err.Number = 0 Then
+		Set oFile = oFSO.CreateTextFile(sFileName, True)
+		For Each objOption In AvailableComputers.Options
+        	If objOption.Value <> "0" Then
+        		objOption.RemoveNode
+        	End If
+    	Next
+		Set objConnection = CreateObject("ADODB.Connection")
+		objConnection.Provider = "ADsDSOObject"
+		Set objRecordSet = CreateObject("ADODB.Recordset")
+		Set objCommand =   CreateObject("ADODB.Command")
+		objConnection.Open "Active Directory Provider"
+		Set objCommand.ActiveConnection = objConnection
+		objCommand.Properties("Page Size") = 1000
+		objCommand.Properties("Searchscope") = ADS_SCOPE_SUBTREE
+		objCommand.CommandText =  "Select Name from 'LDAP://" & sDomain & "' " _
+			& "Where objectClass='computer' ORDER BY Name ASC"
+		objRecordSet.CursorLocation = adUseClient
+		
+		objRecordSet.Open objCommand, , adOpenStatic, adLockOptimistic
+		objRecordSet.MoveFirst
+		sProgress = "Loading."
+		HTAEcho sProgress
+		dtmProgress = Time
+		If Err = 0 Then
+		    Do Until objRecordSet.EOF
+		    	If DisplayProgress.Checked Then
+			    	If DateDiff("s",dtmProgress,Time) > 3 Then
+			    		sProgress = sProgress & "."
+			    		HTAEcho sProgress
+			    		dtmProgress = DateAdd("s", 3, dtmProgress)
+			    	End If
+		    	End If
+		        strLine = objRecordSet.Fields("Name").Value
+		        Set objOption = document.createElement("OPTION")
+		        objOption.Text = strLine
+		        objOption.Value = strLine
+		        AvailableComputers.Add(objOption)
+		        oFile.WriteLine (strLine)
+		        objRecordSet.MoveNext
+		    Loop
+		    oFile.Close
+		    sProgress = "Done."
+		    HTAEcho sProgress
+		End If
+	Else
+		MsgBox "Unable to load computer names from Active Directory.  You may not be " _
+			& "a member of a domain."
+	End If
+End Sub
+
+Sub Speak()
+	On Error Resume Next
+	sComputer = AvailableComputers.Value
+	If sComputer = "0" Then
+		MsgBox "You forgot to pick a computer...."
+	Else	
+		SendVoice(sComputer)
+	'MsgBox "Done speaking."
+	End If
+End Sub
+
+Sub SendVoice(sBoxName)
+	sGreeting = InputBox("Enter the voice message:")
+	Set oNet = CreateObject("WScript.Network")
+	On Error Resume Next
+	oNet.RemoveNetworkDrive "X:"
+	If Err.Number <> 0 Then
+		Err.Clear
+	End If
+	On Error GoTo 0
+	oNet.MapNetworkDrive "X:", "\\" & sBoxName & "\C$"
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	Set oFolder = oFSO.CreateFolder("X:\TempTemp")
+	Set oFile = oFSO.CreateTextFile ("X:\TempTemp\Voice.vbs", True)
+	sScript = "Set oVoice = WScript.CreateObject(" & Chr(34) & "SAPI.SpVoice" & Chr(34) & ")" & VbCrLf _
+		& "oVoice.Speak " & Chr(34) & sGreeting & Chr(34)
+	oFile.Write sScript
+	oFile.Close
+	errReturn = GetObject("WinMgmts:\\" & sBoxName & "\root\cimv2:Win32_Process").Create("C:\windows\system32\wscript.exe C:\TempTemp\Voice.vbs", null, null, intProcessID)
+	Sleep 1
+	oFSO.DeleteFolder "X:\TempTemp", True
+	oNet.RemoveNetworkDrive "X:", True
+
+	'Below is the original SendBeep code
+	
+	' Set Proc = GetObject("WinMgmts:\\" & sBoxName & "\root\cimv2:Win32_Process")
+	'   If Err <> 0 Then
+	'   	WScript.Echo "Error beeping " & sBoxName
+	'   	WScript.Quit
+	'   End If
+	'   errReturn = Proc.Create("Rundll32.exe user32.dll,MessageBeep", Null, Null, intProcessID)
+End Sub
+
+Sub StartMessenger
+	On Error Resume Next
+	strComputer = GetBoxes
+	For i = 0 To UBound(strComputer)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & strComputer(i)
+		End If
+	    Set objWMIService = GetObject("winmgmts:\\" & strComputer(i) & "\root\cimv2")
+	    Set colItems = objWMIService.ExecQuery("Select * from Win32_Service Where Name='Messenger'")
+		If Err = 0 Then
+		    For Each objItem in colItems
+		        If objItem.StartMode = "Manual" Or objItem.StartMode = "Disabled" Then
+		            errReturnCode = objItem.Change( , , , , "Automatic")
+		            errReturn = objItem.StartService()
+		            If errReturnCode <> 0 Then
+		                sResult = sResult & "Could not set startmode to Automatic on " & strComputer(i) & VbCrLf
+						Err.Clear
+					Else
+						sResult = sResult & "Successfully started Messenger service on " & strComputer(i) & VbCrLf
+					End If
+				Else
+					errReturn = objItem.StartService()
+					sResult = sResult & "Successfully started Messenger service on " & strComputer(i) & VbCrLf
+				End If
+			Next
+		Else
+			sResult = sResult & "Couldn't read " & strComputer(i) & VbCrLf
+			Err.Clear
+		End If
+	Next
+	If sResult <> "" Then
+		PopUp sResult
+	End If
+End Sub
+
+Sub StopMessenger
+	On Error Resume Next
+	strComputer = GetBoxes
+	For i = 0 To UBound(strComputer)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & strComputer(i)
+		End If
+	    Set objWMIService = GetObject("winmgmts:\\" & strComputer(i) & "\root\cimv2")
+	    Set colItems = objWMIService.ExecQuery("Select * from Win32_Service Where Name='Messenger'")
+		If Err = 0 Then
+		    For Each objItem in colItems
+		        If objItem.Started = True Then
+		            errReturn = objItem.StopService()
+		            If errReturnCode <> 0 Then
+		                sResult = sResult & "Could not stop Messenger Service on " & strComputer(i) & vbCrLf
+						Err.Clear
+					Else
+						sResult = sResult & "Successfully stopped Messenger service on " & strComputer(i) & vbCrLf
+					End If
+				Else
+					sResult = sResult & "Messenger is not started on " & strComputer(i) & VbCrLf
+				End If
+			Next
+		Else
+			sResult = sResult & "Couldn't read " & strComputer(i) & vbCrLf
+			Err.Clear
+		End If
+	Next
+	If sResult <> "" Then
+		PopUp sResult
+	End If
+End Sub
+
+Sub OpenSesame
+	sComputer = AvailableComputers.Value
+	If sComputer <> "0" Then
+		sProtocol = Protocol.Value
+		sOpenClose = "Opened"
+		If Protocol.Value = "0" Then
+			MsgBox "You forgot to pick a protocol..."
+		Else
+			sCommand = "netsh firewall add portopening " & GetProtocol(Protocol.Value) & " " & Chr(34) & Protocol.Value & Chr(34)
+			return = ManageFirewall(sCommand, sComputer, sProtocol, sOpenClose)
+		End If
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If	
+End Sub
+
+Sub CloseSesame
+	sComputer = AvailableComputers.Value
+	If sComputer <> "0" Then
+		sProtocol = Protocol.Value
+		sOpenClose = "Closed"
+		If Protocol.Value = "0" Then
+			MsgBox "You forgot to pick a protocol..."
+		Else
+			sCommand = "netsh firewall delete portopening " & GetProtocol(Protocol.Value)
+			return = ManageFirewall (sCommand, sComputer, sProtocol, sOpenClose)
+		End If
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If
+End Sub
+
+Function ManageFirewall(sCommandLine, sBoxName, sProtocolName, iMode)
+	Set proc = GetObject("WinMgmts:\\" & sBoxName & "\root\cimv2:Win32_Process")
+  	errReturn = proc.Create(sCommandLine, null, null, intProcessID)
+	If errReturn = 0 Then
+		MsgBox iMode & " " & sProtocolName & " on " & sBoxName & "."
+	Else
+		MsgBox "Failed to manage " & sProtocolName & " on " & sBoxName & "."
+	End If
+End Function
+
+Function GetProtocol(sProtocol)
+	Select Case sProtocol
+		Case "Remote Desktop"
+			GetProtocol = "TCP 3389"
+		Case "FTP"
+			GetProtocol = "TCP 21"
+		Case "HTTP"
+			GetProtocol = "TCP 80"
+		Case "VNC"
+			GetProtocol = "TCP 5900"
+	End Select
+End Function
+
+Function RandomPWDCheck()
+	Dim i, j, maxlen, pwdval, rndPassword, iValidation
+	Randomize
+	maxlen = 4
+	For i = 1 to maxlen
+		Do
+			j = round(Rnd * 122)
+		loop until (j >= 48 And j <= 122)
+	pwdval = pwdval & chr(j)
+	Next
+	rndPassword = InputBox("Enter the following code EXACTLY if you want to proceed:" & VbCrLf & VbCrLf & pwdval)
+	If rndPassword = pwdval Then
+		RandomPWDCheck = 1
+	Else
+		RandomPWDCheck = 0
+	End If
+End Function
+
+Sub ManageIt
+	sComputer = AvailableComputers.Value
+	If sComputer <> "0" Then
+		Set oShell = CreateObject("WScript.Shell")
+		oShell.Run "compmgmt.msc /computer=" & sComputer
+		If Err.Number <> 0 Then
+			MsgBox "Error opening computer management on " & sComputer
+		End If
+	Else
+		MsgBox "You forgot to pick a computer...."
+	End If
+End Sub
+
+Sub MapScan
+	Const ForReading = 1
+	Dim sResult2, aSuccessArray()
+	sFileName = "C:\Script\clients.txt"
+	sUser = InputBox("Enter Domain\Username", "ENTER CREDENTIALS", "MLCO\sstugart")
+	sPassword = PasswordArea.Value
+	set oShell = CreateObject("WScript.Shell")
+	Set oNet = CreateObject("WScript.Network")
+	iSuccess = 0
+	iFail = 0
+	On Error Resume Next
+	oNet.RemoveNetworkDrive "X:",True
+	Err.Clear
+	sCompName = GetBoxes
+	intArraySize = 0
+	For i = 0 To UBound(sCompName)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & sCompName(i)
+		End If
+	    oNet.MapNetworkDrive "X:", "\\" & sCompName(i) & "\C$",, sUser, sPassword
+	    If Err.Number = 0 Then
+	    	sResult = sResult & "***SUCCESS***" & vbTab & "Mapped as " & sUser & " to " & sCompName(i) & vbCrLf
+	    	oNet.RemoveNetworkDrive "X:", True
+	    	iSuccess = iSuccess + 1
+	    	ReDim Preserve aSuccessArray(intArraySize)
+	    	aSuccessArray(intArraySize) = sCompName(i)
+	    	intArraySize = intArraySize + 1
+	    Else
+	    	sResult = sResult & sCompName(i) & ": FAILED mapping as " & sUser & VbCrLf
+	    	Err.Clear
+	    	iFail = iFail + 1
+	    End If
+	    sCount = sCount & i & VbCrLf
+	Next
+	If iSuccess > 0 or iFail > 0 Then
+		sResult = sResult & VbCrLf & VbCrLf & "SUCCESS = " _
+			& iSuccess & VbCrLf & "FAILED = " & iFail
+	End If
+	If sResult <> "" Then
+		If iFail > 0 Then
+			Set oShell = CreateObject("WScript.Shell")
+			iRebuildClients = oShell.Popup(sResult & VbCrLf & VbCrLf _
+				& "REMOVE FAILED NAMES FROM LIST?",, _
+				"REMOVE FAILED?",vbYesNo)
+			If iRebuildClients = vbYes Then
+				Set oFSO = CreateObject("Scripting.FileSystemObject")
+				Set oFile = oFSO.CreateTextFile("C:\Script\Clients.txt", True)
+				For k = 0 To UBound(aSuccessArray)
+					oFile.WriteLine aSuccessArray(k)
+				Next
+				oFile.Close
+				ClearPing
+			End If
+		Else
+			PopUp sResult
+		End If
+	End If
+	HTAEcho ""
+End Sub
+
+Function Pinger(sComp)
+	Dim iPingTimeOut, colItems, oItem, oWMI 
+	iPingTimeOut = "100"
+	On Error Resume Next
+	If DisplayProgress.Checked Then
+		HTAEcho "Pinging " & sComp
+	End If
+	Set oWMI = GetObject("WinMgmts://")
+	Set colItems = oWMI.ExecQuery("Select * from Win32_PingStatus " _
+		& "Where Address = '" & sComp & "'" _
+		& "AND Timeout =" & iPingTimeOut, "WQL", 48)
+	If Err.Number <> 0 Then
+		MsgBox "An error has occurred.  This script " _
+			& "must be run on Windows XP/Windows Server 2003 " _
+			& "or later."
+	Else
+	   For Each oItem In colItems
+	   	   If oItem.StatusCode = 0 Then
+	           Pinger = 1
+	       Else
+	   	       Pinger = 0
+	       End If
+	   Next
+	End If
+End Function
+
+Function GetBoxes
+	intSize = -1
+	Const ForReading = 1
+	Dim sResult2
+	sFile = "C:\Script\clients.txt"
+	ReDim Preserve arrComputers(intSize)
+	If AvailableComputers.Value <> "0" Then
+		If PingCheck.Checked Then
+			If Pinger(AvailableComputers.Value) = 1 Then
+				intSize = intSize + 1
+				ReDim Preserve arrComputers(intSize)
+				arrComputers(intSize) = AvailableComputers.Value
+			Else
+				sResult2 = sResult2 & "FAILED PINGING " & UCase(AvailableComputers.Value) & VbCrLf
+			End If
+		Else
+			intSize = intSize + 1
+			ReDim Preserve arrComputers(intSize)
+			arrComputers(intSize) = AvailableComputers.Value
+		End If
+	Else
+		Set oFSO = CreateObject("Scripting.FileSystemObject")
+		Set oInputFile = oFSO.OpenTextFile(sFile, ForReading)
+		If PingCheck.Checked Then
+			Do Until oInputFile.AtEndOfStream
+				sComputer = oInputFile.ReadLine
+				If Pinger(sComputer) = 1 Then
+					intSize = intSize + 1
+					ReDim Preserve arrComputers(intSize)
+					arrComputers(intSize) = sComputer
+				Else
+					sResult2 = sResult2 & "FAILED PINGING " & UCase(sComputer) & VbCrLf
+				End If			
+			Loop
+			oInputFile.Close
+		Else
+			Do Until oInputFile.AtEndOfStream
+				intSize = intSize + 1
+				ReDim Preserve arrComputers(intSize)
+				arrComputers(intSize) = oInputFile.ReadLine
+			Loop
+		End If
+	End If
+	GetBoxes = arrComputers
+	If sResult2 <> "" Then
+		Set oShell = CreateObject("WScript.Shell")
+		iClearNoPings = oShell.Popup(sResult2 & VbCrLf & VbCrLf & "REMOVE FAILED PINGS FROM SYSTEM LIST?", 10, "REMOVE FAILED?", vbYesNo)
+		If iClearNoPings = vbYes Then
+			If AvailableComputers.Value = "0" Then
+				Set oFile = oFSO.CreateTextFile("C:\Script\Clients.txt", True)
+				For k = 0 To UBound(arrComputers)
+					oFile.WriteLine arrComputers(k)
+				Next
+				oFile.Close
+				ClearPing
+			Else
+				Set oFSO = CreateObject("Scripting.FileSystemObject")
+				Set oOriginalFile = oFSO.OpenTextFile("C:\Script\Clients.txt", ForReading)
+				Set oTempFile = oFSO.CreateTextFile("C:\Script\temp_clients.txt", True)
+				Do Until oOriginalFile.AtEndOfStream
+					sBox = oOriginalFile.ReadLine
+					If sBox <> AvailableComputers.Value Then
+						oTempFile.WriteLine(sBox)
+					End If
+				Loop
+				oOriginalFile.Close
+				oTempFile.Close
+				oFSO.DeleteFile "C:\Script\Clients.txt", True
+				oFSO.MoveFile "C:\Script\temp_clients.txt", "C:\Script\Clients.txt"
+				ClearPing
+			End If
+		End If
+	End If
+End Function
+
+Sub Popup(sMessage)
+	'Note: MsgBox is limited to 1,023 characters; we use Popup instead
+	Set oShell = CreateObject("WScript.Shell")
+	oShell.Popup sMessage
+End Sub
+
+'NOTE: Both the HTAEcho and ForceRefresh procedures were borrowed from
+'  Jeffrey Hicks' PWDMan.hta.
+Sub HTAEcho(sMsg)
+	On Error Resume Next
+	Report.InnerHtml="<I>" & sMsg & "</I>"
+	Call ForceRefresh()
+End Sub
+
+Function ForceRefresh()
+	Set oShell = CreateObject("WScript.Shell")
+	oShell.Run "cmd /c", 0, True
+End Function
+
+Sub LoggedOnUser
+	sCompName = GetBoxes
+	intArraySize = 0
+	On Error Resume Next
+	For i = 0 To UBound(sCompName)
+		If DisplayProgress.Checked Then
+			HTAEcho "Trying " & sCompName(i)
+		End If
+		Set oWMI = GetObject("winmgmts:\\" & sCompName(i) & "\root\cimv2")
+		If Err <> 0 Then
+			sResults = sResults & "ERROR READING " & sCompName(i) & "<br>"
+			Err.Clear
+		Else
+			Set colItems = oWMI.ExecQuery("Select * from Win32_ComputerSystem",,48)
+			For Each oItem in colItems
+		    	sResults = sResults & "Logged on user at " & oItem.Name & " is " _
+		    		& oItem.UserName & "<br>"
+			Next
+		End If
+	Next
+	HTAEcho sResults
+End Sub
+
+Sub Sleep(iSeconds)
+	Dim sCmd
+	Set oShell = CreateObject("WScript.Shell")
+	sCmd = "%COMSPEC% /c ping -n " & iSeconds & " 127.0.0.1 > nul"
+	oShell.Run sCmd,0,1
+End Sub
+
+</SCRIPT>
+
+<body STYLE="font:14 pt arial; color:black; 
+filter:progid:DXImageTransform.Microsoft.Gradient
+(GradientType=1, StartColorStr='#708090', EndColorStr='#D3D3D3')">
+
+&nbsp;<BR>
+<table width="100%">
+	<tr>
+		<td width = "23%" valign="top"><b>System List</b><BR><span id="SystemList">
+			<select name="AvailableComputers" style="width:200">
+				 <option value="0">All</option>
+			</select>
+			<select name="Processes" Disabled=True>
+				 <option value="0">Select a process</option>
+			</select>
+			<input type="checkbox"name="PingCheck"value="1" checked="True" title="Select to ping the system first before attempting an operation.  Requires Windows XP or later."> Ping First
+			
+<br><br><input id=runbutton1  class="button" type="button" value="Build System List" name="run_button1"  onClick="CreateClients" title="Helps you build the System List by ping sweeping an IP subnet and adding discovered systems to C:\Script\Clients.txt">
+<input id=runbutton2  class="button" type="button" value="Edit System List" name="run_button2" onClick="EditClients" title="Edit the C:\Script\Clients.txt file.  Allows you to add or remove managed systems to the list.">
+<input id=runbutton3  class="button" type="button" value="Load From AD" name="run_button3" onClick="LoadFromAD" title="Create the System List by loading computer names from Active Directory.">
+<input id=runbutton4  class="button" type="button" value="Start Telnet" name="run_button4"  onClick="Telnet" title="Starts the Telnet service on the selected computer">
+<input id=runbutton5  class="button" type="button" value="Stop Telnet" name="run_button5"  onClick="StopTelnet" title="Stops the Telnet service on the selected computer">
+<input id=runbutton6  class="button" type="button" value="Query Processes" name="run_button6"  onClick="QueryProcs" title="Creates a list of running processes on the selected computer">
+<input id=runbutton7  class="button" type="button" value="Kill Process" name="run_button7" onClick="KillProc" title="Terminates the selected process on the selected computer">
+<input id=runbutton8  class="button" type="button" value="Get OS Version" name="run_button8" onClick="GetOSVersion" title="Returns the Operating System and Service Pack level of the selected computer">
+<input id=runbutton9  class="button" type="button" value="Remote Desktop" name="run_button9" onClick="RemoteDesktop" title="Enables or disables Remote Desktop on the selected computer">
+<input id=runbutton10  class="button" type="button" value="Remote To It" name="run_button10" onClick="RemoteToIt" title="Opens a Remote Desktop session to the selected computer">
+<input id=runbutton11  class="button" type="button" value="Ping It" name="run_button11" onClick="PingIt" title="Pings the selected computer and displays the results">
+<input id=runbutton12  class="button" type="button" value="Map C$" name="run_button12" onClick="MapIt" title="Attempts to map to the C$ administrative share on the selected computer">
+<input id=runbutton13  class="button" type="button" value="Add Local Admin" name="run_button13" onClick="AddLocalAdmin" title="Creates a local administrator account on the selected computer.  If no computer is selected, it will attempt to add a local administrator to EVERY computer in the list">
+<input id=runbutton14  class="button" type="button" value="Copy URL Link" name="run_button14" onClick="CopyURLLink" title="Creates a URL shortcut on the desktop of the selected computer(s).  If no computer is selected, it will attempt to add the shortcut to EVERY computer in the list">
+<input id=runbutton15  class="button" type="button" value="CMD Tab AutoFill" name="run_button15" onClick="TabAutoComplete" title="Modifies the registry on the selected computer to allow for tab-based autocompletion at the command prompt.">
+<input id=runbutton20  class="button" type="button" value="Speak!" name="run_button20" onClick="Speak" title="Asks the selected system to speak the phrase you type.">
+<input id=runbutton21  class="button" type="button" value="Start Messenger" name="run_button21" onClick="StartMessenger" title="Starts the Messenger Service on the selected system.">
+<input id=runbutton22  class="button" type="button" value="Stop Messenger" name="run_button22" onClick="StopMessenger" title="Stops the Messenger Service on the selected system.">
+<input id=runbutton23  class="button" type="button" value="Manage It" name="run_button23" onClick="ManageIt" title="Opens Computer Management on the selected computer.">
+<input id=runbutton24  class="button" type="button" value="MapScan" name="run_button24" onClick="MapScan" title="Attempts to map to the administrative share on selected systems to verify administrative access.">
+
+<br>
+<table width="25%" border>
+  <tr>
+    <td width="100%" valign="top"><input id=runbutton16  class="button" type="button" value="Shut It Down!" name="run_button16" onClick="ShutItDown" title="Shuts down the selected computer"><input id=runbutton17  class="button" type="button" value="Reboot It!" name="run_button17" onClick="Reboot" title="Reboots the selected computer"><input id=runbutton18  class="button" type="button" value="Log It Off!" name="run_button18" onClick="Logoff" title="Logs off the current user from the selected computer"><input id=runbutton19  class="button" type="button" value="Lock It!" name="run_button19" onClick="LockBoxButton" title="Locks the selected computer."></td>
+  </tr>
+  <input type="checkbox"name="DisplayProgress"value="1" checked="true" title="Select to display progress for some tasks in the HTA window. On large operations, this may significantly slow the progress of the operation."> Display Progress
+  <input type="checkbox"name="ResolveIt"value="1" checked="true" title="Only applicable for the Build System List option.  Select if you'd like to try to resolve IPs to friendly names. "> Resolve It
+</table>
+<hr>
+<table width="100%" border=0>
+  <tr>
+    <td width="85%"></td><td><input id=runbutton9  class="button" type="button" value="Clear Results" name="run_button9" onClick="ClearPing" title="Clears all results from the window and reloads the console"></td>
+  </tr>
+</table>
+<span id="report">&nbsp</span>
+<marquee id="Crawler" loop="0" scrollAmount="10"></marquee>
+<br><br><hr>
+<table width="100%" border>
+  <tr>
+    <td><input id=runbutton25  class="button" type="button" value="Logged On User" name="run_button25" onClick="LoggedOnUser" title="Reports the name of the interactively logged on user."></td>
+  </tr>
+</table>
+<table width="25%" border>
+  <tr>
+  	<td width = "23%" valign="top"><b>Firewall Settings</b><BR><span id="FirewallSettings">
+			<select name="Protocol" style="width:130">
+				 <option value="0">Select a Protocol</option>
+				 <option value="Remote Desktop">Remote Desktop</option>
+				 <option value="FTP">FTP</option>
+				 <option value="HTTP">HTTP</option>
+				 <option value="VNC">VNC</option>
+			</select><input id=runbutton23  style="width: 40" class="button" type="button" value="Open" name="run_button23" onClick="OpenSesame" title="Opens the selected port on the selected system."><input id=runbutton24 style="width: 40" class="button" type="button" value="Close" name="run_button24" onClick="CloseSesame" title="Closes the selected port on the selected system.">
+    		<td width="100%" valign="top"><font color="Black"><b>Password Field:   </b></font><input type="password" name="PasswordArea" size="30" title="Enter an administrative password for the Map C$, Add Local Admin (password to assign to the newly-created account), and MapScan operations.  If left blank, no password will be used."></td>		
+  </tr>
+</table>
+
+
+
+
+</body>
+</html>
